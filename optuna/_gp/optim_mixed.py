@@ -285,6 +285,7 @@ def optimize_acqf_mixed(
     n_local_search: int = 10,
     tol: float = 1e-4,
     rng: np.random.RandomState | None = None,
+    local_search: bool = True,
 ) -> tuple[np.ndarray, float]:
     rng = rng or np.random.RandomState()
 
@@ -300,6 +301,15 @@ def optimize_acqf_mixed(
     # Evaluate all values at initial samples
     f_vals = acqf.eval_acqf_no_grad(sampled_xs)
     assert isinstance(f_vals, np.ndarray)
+
+    if not local_search:
+        if len(warmstart_normalized_params_array) > 0:
+            warm_f_vals = acqf.eval_acqf_no_grad(warmstart_normalized_params_array)
+            assert isinstance(warm_f_vals, np.ndarray)
+            f_vals = np.concatenate([f_vals, warm_f_vals])
+            sampled_xs = np.vstack([sampled_xs, warmstart_normalized_params_array])
+        best_idx = np.argmax(f_vals).item()
+        return sampled_xs[best_idx], f_vals[best_idx]
 
     max_i = np.argmax(f_vals)
 

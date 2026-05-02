@@ -174,6 +174,10 @@ class GPSampler(BaseSampler):
             meaning that no GP model is used in the sampling.
             Note that the parameters of the first trial in a study are always sampled
             via an independent sampler, so no warning messages are emitted in this case.
+        local_search:
+            Whether to perform a local search for the acquisition function optimization.
+            If :obj:`False`, the sampler will just take the best value from the initial evaluation
+            of the random configurations. Defaults to :obj:`True`.
     """
 
     def __init__(
@@ -185,6 +189,7 @@ class GPSampler(BaseSampler):
         deterministic_objective: bool = False,
         constraints_func: Callable[[FrozenTrial], Sequence[float]] | None = None,
         warn_independent_sampling: bool = True,
+        local_search: bool = True,
     ) -> None:
         self._rng = LazyRandomState(seed)
         self._independent_sampler = independent_sampler or optuna.samplers.RandomSampler(seed=seed)
@@ -199,6 +204,7 @@ class GPSampler(BaseSampler):
         self._deterministic = deterministic_objective
         self._constraints_func = constraints_func
         self._warn_independent_sampling = warn_independent_sampling
+        self._local_search = local_search
 
         if constraints_func is not None:
             warn_experimental_argument("constraints_func")
@@ -248,6 +254,7 @@ class GPSampler(BaseSampler):
             n_local_search=self._n_local_search,
             tol=self._tol,
             rng=self._rng.rng,
+            local_search=self._local_search,
         )
         return normalized_params
 
