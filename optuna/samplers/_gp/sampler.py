@@ -174,6 +174,10 @@ class GPSampler(BaseSampler):
             meaning that no GP model is used in the sampling.
             Note that the parameters of the first trial in a study are always sampled
             via an independent sampler, so no warning messages are emitted in this case.
+        n_preliminary_samples:
+            Number of initial candidate points drawn via Quasi-Monte Carlo (QMC) sampling before
+            the local search phase. A larger value improves coverage of the search space at the
+            cost of more acquisition function evaluations. Defaults to 2048.
         local_search:
             Whether to perform a local search for the acquisition function optimization.
             If :obj:`False`, the sampler will just take the best value from the initial evaluation
@@ -189,6 +193,7 @@ class GPSampler(BaseSampler):
         deterministic_objective: bool = False,
         constraints_func: Callable[[FrozenTrial], Sequence[float]] | None = None,
         warn_independent_sampling: bool = True,
+        n_preliminary_samples: int = 2048,
         local_search: bool = True,
     ) -> None:
         self._rng = LazyRandomState(seed)
@@ -210,7 +215,7 @@ class GPSampler(BaseSampler):
             warn_experimental_argument("constraints_func")
 
         # Control parameters of the acquisition function optimization.
-        self._n_preliminary_samples: int = 2048
+        self._n_preliminary_samples: int = n_preliminary_samples
         # NOTE(nabenabe): ehvi in BoTorchSampler uses 20.
         self._n_local_search = 10
         self._tol = 1e-4
