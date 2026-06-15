@@ -33,6 +33,7 @@ def _gradient_ascent_batched(
     continuous_indices: np.ndarray,
     lengthscales: np.ndarray,
     tol: float,
+    max_evals: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     This function optimizes the acquisition function using preconditioning.
@@ -70,14 +71,19 @@ def _gradient_ascent_batched(
         # Let the scaled acqf be g(x) and the acqf be f(sx), then dg/dx = df/dx * s.
         return neg_fvals_, grads[:, continuous_indices] * lengthscales
 
+    lbfgsb_kwargs: dict = dict(
+        func_and_grad=negative_acqf_with_grad,
+        x0_batched=initial_params_batched[:, continuous_indices] / lengthscales,
+        batched_args=([param for param in initial_params_batched.copy()],),
+        bounds=[(0, 1 / s) for s in lengthscales],
+        pgtol=math.sqrt(tol),
+        max_iters=200,
+    )
+    if max_evals is not None:
+        lbfgsb_kwargs["max_evals"] = max_evals
     with single_blas_thread_if_scipy_v1_15_or_newer():
         scaled_cont_xs_opt, neg_fvals_opt, n_iterations = batched_lbfgsb.batched_lbfgsb(
-            func_and_grad=negative_acqf_with_grad,
-            x0_batched=initial_params_batched[:, continuous_indices] / lengthscales,
-            batched_args=([param for param in initial_params_batched.copy()],),
-            bounds=[(0, 1 / s) for s in lengthscales],
-            pgtol=math.sqrt(tol),
-            max_iters=200,
+            **lbfgsb_kwargs
         )
 
     xs_opt = initial_params_batched.copy()
@@ -230,7 +236,12 @@ def _local_search_discrete_batched(
 
 
 def local_search_mixed_batched(
-    acqf: BaseAcquisitionFunc, xs0: np.ndarray, *, tol: float = 1e-4, max_iter: int = 100
+    acqf: BaseAcquisitionFunc,
+    xs0: np.ndarray,
+    *,
+    tol: float = 1e-4,
+    max_iter: int = 100,
+    max_evals: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     # This is a technique for speeding up optimization. We use an isotropic kernel, so scaling the
     # gradient will make the hessian better-conditioned.
@@ -252,7 +263,13 @@ def local_search_mixed_batched(
     remaining_inds = np.arange(len(best_xs))
     for _ in range(max_iter):
         best_xs[remaining_inds], best_fvals[remaining_inds], updated = _gradient_ascent_batched(
-            acqf, best_xs[remaining_inds], best_fvals[remaining_inds], cont_inds, lengthscales, tol
+            acqf,
+            best_xs[remaining_inds],
+            best_fvals[remaining_inds],
+            cont_inds,
+            lengthscales,
+            tol,
+            max_evals=max_evals,
         )
         last_changed_dims = np.where(updated, CONTINUOUS, last_changed_dims)
         for i, choices, xtol in zip(discrete_indices, choices_of_discrete_params, discrete_xtols):
@@ -286,6 +303,7 @@ def optimize_acqf_mixed(
     tol: float = 1e-4,
     rng: np.random.RandomState | None = None,
     local_search: bool = True,
+    local_search_max_evals: int | None = None,
 ) -> tuple[np.ndarray, float]:
     rng = rng or np.random.RandomState()
 
@@ -334,6 +352,8 @@ def optimize_acqf_mixed(
         chosen_idxs = np.append(chosen_idxs, additional_idxs)
 
     x_warmstarts = np.vstack([sampled_xs[chosen_idxs, :], warmstart_normalized_params_array])
-    best_xs, best_fvals = local_search_mixed_batched(acqf, x_warmstarts, tol=tol)
+    best_xs, best_fvals = local_search_mixed_batched(
+        acqf, x_warmstarts, tol=tol, max_evals=local_search_max_evals
+    )
     best_idx = np.argmax(best_fvals).item()
     return best_xs[best_idx], best_fvals[best_idx]

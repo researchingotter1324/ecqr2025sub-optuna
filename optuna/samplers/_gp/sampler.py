@@ -175,9 +175,15 @@ class GPSampler(BaseSampler):
             Note that the parameters of the first trial in a study are always sampled
             via an independent sampler, so no warning messages are emitted in this case.
         n_preliminary_samples:
-            Number of initial candidate points drawn via Quasi-Monte Carlo (QMC) sampling before
-            the local search phase. A larger value improves coverage of the search space at the
-            cost of more acquisition function evaluations. Defaults to 2048.
+            Number of initial candidate points drawn via Quasi-Monte Carlo (QMC) Sobol sampling
+            before the local search phase. Should be a power of 2 to avoid Sobol sampling
+            warnings from scipy. A larger value improves coverage of the search space at the
+            cost of more acquisition function evaluations. Defaults to 1024 (2^10).
+        n_acqf_evaluations:
+            Total budget of acquisition function evaluations per GP suggestion. The local search
+            phase is capped at ``n_acqf_evaluations - n_preliminary_samples`` function evaluations
+            (passed as ``max_evals`` to the L-BFGS-B optimizer). Defaults to :obj:`None`
+            (no explicit cap; the L-BFGS-B default of 15000 applies).
         local_search:
             Whether to perform a local search for the acquisition function optimization.
             If :obj:`False`, the sampler will just take the best value from the initial evaluation
@@ -193,7 +199,8 @@ class GPSampler(BaseSampler):
         deterministic_objective: bool = False,
         constraints_func: Callable[[FrozenTrial], Sequence[float]] | None = None,
         warn_independent_sampling: bool = True,
-        n_preliminary_samples: int = 2048,
+        n_preliminary_samples: int = 1024,
+        n_acqf_evaluations: int | None = None,
         local_search: bool = True,
     ) -> None:
         self._rng = LazyRandomState(seed)
@@ -216,6 +223,9 @@ class GPSampler(BaseSampler):
 
         # Control parameters of the acquisition function optimization.
         self._n_preliminary_samples: int = n_preliminary_samples
+        self._local_search_max_evals: int | None = (
+            n_acqf_evaluations - n_preliminary_samples if n_acqf_evaluations is not None else None
+        )
         # NOTE(nabenabe): ehvi in BoTorchSampler uses 20.
         self._n_local_search = 10
         self._tol = 1e-4
@@ -260,6 +270,7 @@ class GPSampler(BaseSampler):
             tol=self._tol,
             rng=self._rng.rng,
             local_search=self._local_search,
+            local_search_max_evals=self._local_search_max_evals,
         )
         return normalized_params
 
