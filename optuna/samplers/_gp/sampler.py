@@ -199,7 +199,7 @@ class GPSampler(BaseSampler):
         deterministic_objective: bool = False,
         constraints_func: Callable[[FrozenTrial], Sequence[float]] | None = None,
         warn_independent_sampling: bool = True,
-        n_preliminary_samples: int = 1024,
+        n_preliminary_samples: int = 2048,
         n_acqf_evaluations: int | None = None,
         local_search: bool = True,
     ) -> None:
