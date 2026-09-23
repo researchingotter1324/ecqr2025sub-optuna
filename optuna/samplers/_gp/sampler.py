@@ -174,6 +174,25 @@ class GPSampler(BaseSampler):
             meaning that no GP model is used in the sampling.
             Note that the parameters of the first trial in a study are always sampled
             via an independent sampler, so no warning messages are emitted in this case.
+        n_preliminary_samples:
+            Number of initial candidate points drawn via Quasi-Monte Carlo (QMC) Sobol sampling
+            before the local search phase. Should be a power of 2 to avoid Sobol sampling
+            warnings from scipy. A larger value improves coverage of the search space at the
+            cost of more acquisition function evaluations. Defaults to 2048 (2^11).
+        n_acqf_evaluations:
+            Total budget of surrogate+acquisition point evaluations per GP suggestion.
+            When ``local_search=False``, this many random designs are scored and the best is
+            returned. When ``local_search=True``, ``n_preliminary_samples`` random designs are
+            scored first and the remainder of the budget is spent on local search; search stops
+            when the budget is exhausted and the best point seen is returned. Each design
+            evaluated on the surrogate and acquisition (including each point in a batched
+            L-BFGS-B or discrete-search call) counts as one evaluation. Defaults to :obj:`None`
+            (no explicit cap; the L-BFGS-B default of 15000 applies, and non-local search uses
+            ``n_preliminary_samples`` designs).
+        local_search:
+            Whether to perform a local search for the acquisition function optimization.
+            If :obj:`False`, the sampler will just take the best value from the initial evaluation
+            of the random configurations. Defaults to :obj:`True`.
     """
 
     def __init__(
@@ -185,6 +204,9 @@ class GPSampler(BaseSampler):
         deterministic_objective: bool = False,
         constraints_func: Callable[[FrozenTrial], Sequence[float]] | None = None,
         warn_independent_sampling: bool = True,
+        n_preliminary_samples: int = 2048,
+        n_acqf_evaluations: int | None = None,
+        local_search: bool = True,
     ) -> None:
         self._rng = LazyRandomState(seed)
         self._independent_sampler = independent_sampler or optuna.samplers.RandomSampler(seed=seed)
@@ -199,12 +221,16 @@ class GPSampler(BaseSampler):
         self._deterministic = deterministic_objective
         self._constraints_func = constraints_func
         self._warn_independent_sampling = warn_independent_sampling
+        self._local_search = local_search
 
         if constraints_func is not None:
             warn_experimental_argument("constraints_func")
 
         # Control parameters of the acquisition function optimization.
-        self._n_preliminary_samples: int = 2048
+        self._n_preliminary_samples: int = n_preliminary_samples
+        if n_acqf_evaluations is not None and n_acqf_evaluations <= 0:
+            raise ValueError("n_acqf_evaluations must be a positive integer or None.")
+        self._n_acqf_evaluations: int | None = n_acqf_evaluations
         # NOTE(nabenabe): ehvi in BoTorchSampler uses 20.
         self._n_local_search = 10
         self._tol = 1e-4
@@ -248,6 +274,8 @@ class GPSampler(BaseSampler):
             n_local_search=self._n_local_search,
             tol=self._tol,
             rng=self._rng.rng,
+            local_search=self._local_search,
+            n_acqf_evaluations=self._n_acqf_evaluations,
         )
         return normalized_params
 
